@@ -1,0 +1,253 @@
+<script>
+/**
+ * Adaptador funcional del frontend existente.
+ * Se conservan todas las clases CSS, estructura visual y estilos originales.
+ */
+(function () {
+  'use strict';
+
+  const estado = { lineas: [], linea: '', pinzas: [], seleccionada: null, guardando: false, historialCargado: false };
+  const uno = selector => document.querySelector(selector);
+  const todos = selector => Array.from(document.querySelectorAll(selector));
+
+  function servidor(nombre, datos) {
+    return new Promise((resolver, rechazar) => {
+      if (!window.google || !google.script || !google.script.run) {
+        rechazar(new Error('Abre la aplicación mediante su URL de Apps Script.'));
+        return;
+      }
+      const ejecutor = google.script.run.withSuccessHandler(resolver).withFailureHandler(rechazar);
+      if (datos === undefined) ejecutor[nombre]();
+      else ejecutor[nombre](datos);
+    });
+  }
+
+  function opciones(select, datos, textoInicial) {
+    select.replaceChildren();
+    const vacia = new Option(textoInicial, '');
+    select.add(vacia);
+    datos.forEach(x => select.add(new Option(x.nombre, x.id)));
+    select.value = '';
+  }
+
+  function mensajeError(error) {
+    window.alert('No se pudo completar la operación: ' + (error && error.message ? error.message : error));
+  }
+
+  function texto(el, valor) {
+    if (el) el.textContent = valor == null ? '' : String(valor);
+  }
+
+  function insignia(el, calibrada, etiqueta) {
+    el.classList.toggle('insignia-calibracion--calibrada', calibrada);
+    // Conserva las reglas visuales originales. El texto distingue cada estado.
+    texto(el, etiqueta);
+    const punto = document.createElement('span');
+    punto.className = 'simbolo-cuadrado-insignia';
+    el.prepend(punto);
+  }
+
+  function renderTarjetas() {
+    const contenedor = uno('.cuadricula-tarjetas-pinzas');
+    const contador = uno('.contador-instrumentos-encontrados strong');
+    const busqueda = uno('#campoTextoBusqueda').value.trim().toLocaleLowerCase('es');
+    const filtradas = estado.pinzas.filter(x =>
+      x.id.toLocaleLowerCase('es').includes(busqueda) ||
+      x.nombre.toLocaleLowerCase('es').includes(busqueda));
+    contenedor.replaceChildren();
+    texto(contador, estado.linea ? filtradas.length : 0);
+    if (!estado.linea) return;
+
+    filtradas.forEach(pinza => {
+      const tarjeta = document.createElement('label');
+      tarjeta.className = 'tarjeta-pinza-metrologica';
+      tarjeta.htmlFor = 'controladorCheckboxModalVerificacion';
+      tarjeta.tabIndex = 0;
+
+      const cuerpo = document.createElement('div');
+      const cabecera = document.createElement('div');
+      cabecera.className = 'cabecera-tarjeta-pinza';
+      const categoria = document.createElement('span');
+      categoria.className = 'etiqueta-categoria-pinza';
+      categoria.textContent = 'PINZA';
+      const distintivo = document.createElement('span');
+      distintivo.className = 'insignia-calibracion';
+      insignia(distintivo, pinza.calibrada, pinza.etiquetaEstado);
+      cabecera.append(categoria, distintivo);
+
+      const id = document.createElement('div');
+      id.className = 'identificador-codigo-pinza';
+      id.textContent = pinza.id;
+      const nombre = document.createElement('div');
+      nombre.className = 'descripcion-nombre-pinza';
+      nombre.textContent = pinza.nombre;
+      cuerpo.append(cabecera, id, nombre);
+      const pie = document.createElement('div');
+      pie.className = 'pie-tarjeta-pinza';
+      const ultima = document.createElement('span');
+      ultima.className = 'marca-tiempo-actualizacion';
+      ultima.textContent = pinza.ultimaRevisionMes
+        ? 'Última actualización: ' + pinza.ultimaRevisionMes
+        : 'Pendiente de calibración este mes';
+      pie.append(ultima);
+      tarjeta.append(cuerpo, pie);
+      tarjeta.addEventListener('click', () => {
+        estado.seleccionada = pinza;
+        texto(uno('.identificador-codigo-pinza-modal'), pinza.id);
+      });
+      tarjeta.addEventListener('keydown', evento => {
+        if (evento.key === 'Enter' || evento.key === ' ') {
+          evento.preventDefault();
+          tarjeta.click();
+        }
+      });
+      contenedor.append(tarjeta);
+    });
+  }
+
+  function cambiarLinea(id) {
+    estado.linea = id;
+    estado.pinzas = estado.lineas.find(x => x.id === id)?.instrumentos || [];
+    estado.seleccionada = null;
+    uno('#controladorCheckboxModalVerificacion').checked = false;
+    renderTarjetas();
+  }
+
+  async function cargarPanel() {
+    const datos = await servidor('obtenerDatosPanel');
+    if (!datos || !datos.ok) throw new Error('Respuesta inválida del panel.');
+    const elegida = estado.linea;
+    estado.lineas = datos.lineas;
+    const lineas = datos.lineas.map(l => ({ id: l.id, nombre: l.nombre }));
+    opciones(uno('#selectorLineaProduccion'), lineas, 'Seleccionar línea');
+    opciones(uno('#selectorLineaAuditoria'), lineas, 'Seleccionar línea');
+    if (elegida && datos.lineas.some(x => x.id === elegida)) {
+      uno('#selectorLineaProduccion').value = elegida;
+      cambiarLinea(elegida);
+    } else cambiarLinea('');
+  }
+
+  function celda(fila, clase, valor) {
+    const td = document.createElement('td');
+    if (clase) td.className = clase;
+    td.textContent = valor;
+    fila.append(td);
+    return td;
+  }
+
+  function renderHistorial(datos) {
+    const cuerpo = uno('.tabla-corporativa-auditoria tbody');
+    cuerpo.replaceChildren();
+    texto(uno('.contador-registros-historial strong'), datos.total);
+    const nombresLineas = new Map(estado.lineas.map(x => [x.id, x.nombre]));
+
+    datos.registros.forEach(registro => {
+      const fila = document.createElement('tr');
+      const fecha = celda(fila, '', '');
+      const fechaPrincipal = document.createElement('div');
+      fechaPrincipal.className = 'celda-fecha-principal';
+      fechaPrincipal.textContent = registro.fechaHora.slice(0, 10);
+      const hora = document.createElement('div');
+      hora.className = 'celda-hora-secundaria';
+      hora.textContent = registro.fechaHora.slice(11, 16);
+      fecha.append(fechaPrincipal, hora);
+
+      const instrumento = celda(fila, '', '');
+      const codigo = document.createElement('div');
+      codigo.className = 'celda-codigo-instrumento';
+      codigo.textContent = registro.idInstrumento;
+      const nombre = document.createElement('div');
+      nombre.className = 'celda-nombre-subtitulo';
+      nombre.textContent = registro.nombreInstrumento;
+      instrumento.append(codigo, nombre);
+      celda(fila, 'celda-linea-ubicacion',
+        nombresLineas.get(registro.idLinea) || registro.idLinea);
+      const resultado = celda(fila, '', '');
+      const etiqueta = document.createElement('span');
+      etiqueta.className = 'insignia-calibracion';
+      insignia(etiqueta, registro.resultado === 'CALIBRADA',
+        registro.resultado === 'CALIBRADA' ? 'Calibrada' : 'No calibrada');
+      resultado.append(etiqueta);
+      cuerpo.append(fila);
+    });
+  }
+
+  async function cargarHistorial() {
+    const fechas = todos('.control-entrada-fecha');
+    const linea = uno('#selectorLineaAuditoria').value;
+    const selectorPinza = uno('.contenedor-seleccion-bloqueada select');
+    const filtros = {
+      fechaInicio: fechas[0].value,
+      fechaFin: fechas[1].value,
+      idLinea: linea,
+      idInstrumento: linea ? selectorPinza.value : '',
+      pagina: 1,
+      tamanoPagina: 100
+    };
+    const datos = await servidor('obtenerHistorialPaginado', filtros);
+    if (!datos || !datos.ok) throw new Error('Respuesta inválida del historial.');
+    renderHistorial(datos);
+    estado.historialCargado = true;
+  }
+
+  function cambiarFiltroLinea() {
+    const linea = uno('#selectorLineaAuditoria').value;
+    const selector = uno('.contenedor-seleccion-bloqueada select');
+    const pinzas = estado.lineas.find(x => x.id === linea)?.instrumentos || [];
+    opciones(selector, pinzas, linea ? 'Todas las pinzas' : 'Selecciona una línea primero');
+    selector.disabled = !linea;
+    selector.classList.toggle('control-seleccion-historial--bloqueado', !linea);
+    cargarHistorial().catch(mensajeError);
+  }
+
+  async function confirmar(evento) {
+    evento.preventDefault(); // La etiqueta original no debe cerrar el modal antes de guardar.
+    if (!estado.seleccionada || estado.guardando) return;
+    if (estado.seleccionada.calibrada) {
+      window.alert('Esta pinza ya tiene calibración confirmada durante este mes.');
+      return;
+    }
+    estado.guardando = true;
+    const boton = uno('.boton-modal-accion--azul-corporativo');
+    boton.setAttribute('aria-disabled', 'true');
+    try {
+      const guardado = await servidor('registrarCalibracion', {
+        idInstrumento: estado.seleccionada.id, calibrada: true
+      });
+      if (!guardado || !guardado.ok) throw new Error('No se confirmó el guardado.');
+      uno('#controladorCheckboxModalVerificacion').checked = false;
+      await cargarPanel();
+      if (estado.historialCargado) await cargarHistorial();
+    } catch (error) {
+      mensajeError(error);
+    } finally {
+      estado.guardando = false;
+      boton.removeAttribute('aria-disabled');
+    }
+  }
+
+  function iniciar() {
+    // El prototipo trae una tarjeta y un registro ficticios: retirarlos inmediatamente.
+    uno('.cuadricula-tarjetas-pinzas').replaceChildren();
+    uno('.tabla-corporativa-auditoria tbody').replaceChildren();
+    texto(uno('.contador-instrumentos-encontrados strong'), 0);
+    texto(uno('.contador-registros-historial strong'), 0);
+    opciones(uno('#selectorLineaProduccion'), [], 'Cargando líneas...');
+    uno('#campoTextoBusqueda').addEventListener('input', renderTarjetas);
+    uno('#selectorLineaProduccion').addEventListener('change',
+      evento => cambiarLinea(evento.target.value));
+    uno('#selectorLineaAuditoria').addEventListener('change', cambiarFiltroLinea);
+    uno('.contenedor-seleccion-bloqueada select').addEventListener('change',
+      () => cargarHistorial().catch(mensajeError));
+    todos('.control-entrada-fecha').forEach(el =>
+      el.addEventListener('change', () => cargarHistorial().catch(mensajeError)));
+    uno('.boton-ver-historial-rect').addEventListener('click', () =>
+      cargarHistorial().catch(mensajeError));
+    uno('.boton-modal-accion--azul-corporativo').addEventListener('click', confirmar);
+    cargarPanel().catch(mensajeError);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
+  else iniciar();
+})();
+</script>
