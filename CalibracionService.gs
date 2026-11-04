@@ -18,6 +18,18 @@ function registrarCalibracion(datos) {
       throw new Error('Línea inexistente o inactiva.');
     }
     const fecha = new Date();
+    // Impide confirmaciones repetidas de una misma pinza en el mes.
+    // Se comprueba dentro del bloqueo para proteger solicitudes concurrentes.
+    if (datos.calibrada) {
+      const mes = Utilities.formatDate(fecha, CAL_CONFIG.zonaHoraria, 'yyyy-MM');
+      const yaConfirmada = calRegistros_(CAL_CONFIG.hojas.calibraciones)
+        .some(item => calTexto_(item.id_instrumento) === idInstrumento &&
+          calTexto_(item.resultado) === 'CALIBRADA' &&
+          calMesDeFecha_(item.fecha_hora) === mes);
+      if (yaConfirmada) {
+        throw new Error('La pinza ya tiene una calibración confirmada este mes.');
+      }
+    }
     const resultado = datos.calibrada ? 'CALIBRADA' : 'NO_CALIBRADA';
     const id = 'CAL-' + Utilities.getUuid();
     const correo = Session.getActiveUser().getEmail() || 'NO_IDENTIFICADO';
