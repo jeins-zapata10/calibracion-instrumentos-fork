@@ -79,32 +79,3 @@ function obtenerHistorialPaginado(filtros) {
     registros: historial.slice(inicio, inicio + tamanoPagina)
   };
 }
-
-/** Prueba de solo lectura de los nuevos contratos. */
-function pruebaApiPanelHistorial() {
-  const panel = obtenerDatosPanel();
-  const resumen = panel.lineas.map(linea => ({
-    idLinea: linea.id,
-    total: linea.total,
-    calibradas: linea.calibradas,
-    pendientes: linea.instrumentos.filter(x => x.estado === 'PENDIENTE').length
-  }));
-  const historial = obtenerHistorialPaginado({ pagina: 1, tamanoPagina: 10 });
-
-  const correcto = panel.ok && historial.ok &&
-    panel.lineas.every(l => l.total === l.instrumentos.length) &&
-    panel.lineas.every(l => l.calibradas === l.instrumentos.filter(x => x.calibrada).length) &&
-    historial.registros.length <= 10;
-
-  const resultado = {
-    ok: correcto,
-    periodo: panel.periodo,
-    lineas: resumen,
-    historial: { total: historial.total, pagina: historial.pagina,
-      registrosEnPagina: historial.registros.length }
-  };
-  Logger.log('=== PRUEBA API PANEL E HISTORIAL ===');
-  Logger.log(JSON.stringify(resultado, null, 2));
-  if (!correcto) throw new Error('Contrato de consulta inconsistente.');
-  return resultado;
-}
