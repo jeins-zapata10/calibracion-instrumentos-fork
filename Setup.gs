@@ -1,5 +1,5 @@
 /** Ejecutar manualmente una sola vez para verificar y preparar las pestañas. */
-function inicializarBaseDatos() {
+function inicializarBaseDatos_() {
   const libro = calLibro_();
   Object.keys(CAL_CONFIG.columnas).forEach(nombre => {
     let hoja = libro.getSheetByName(nombre);
