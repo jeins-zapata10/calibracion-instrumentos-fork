@@ -18,10 +18,10 @@ function listarInstrumentos(idLinea) {
 
 /**
  * Registra una pinza real en una línea existente.
- * Uso manual: registrarInstrumento({id: 'P1-002', nombre: 'Pinza amperimétrica', idLinea: 'LIN-001'})
+ * Uso administrativo: registrarInstrumento_({id: 'P1-002', nombre: 'Pinza amperimétrica', idLinea: 'LIN-001'})
  * No registra calibraciones ni modifica el frontend.
  */
-function registrarInstrumento(datos) {
+function registrarInstrumento_(datos) {
   if (!datos || typeof datos !== 'object') {
     throw new Error('Debes proporcionar los datos del instrumento.');
   }
