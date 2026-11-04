@@ -1,7 +1,7 @@
 /** Registra confirmaciones de estado con historial permanente. */
 function registrarCalibracion(datos) {
-  if (!datos || typeof datos !== 'object' || typeof datos.calibrada !== 'boolean') {
-    throw new Error('Se requiere el resultado calibrada (true o false).');
+  if (!datos || typeof datos !== 'object' || datos.calibrada !== true) {
+    throw new Error('Solo se admite la confirmación explícita de calibración.');
   }
   const idInstrumento = calTexto_(datos.idInstrumento);
   if (!idInstrumento) throw new Error('Se requiere idInstrumento.');
@@ -20,7 +20,7 @@ function registrarCalibracion(datos) {
     const fecha = new Date();
     // Impide confirmaciones repetidas de una misma pinza en el mes.
     // Se comprueba dentro del bloqueo para proteger solicitudes concurrentes.
-    if (datos.calibrada) {
+    {
       const mes = Utilities.formatDate(fecha, CAL_CONFIG.zonaHoraria, 'yyyy-MM');
       const yaConfirmada = calRegistros_(CAL_CONFIG.hojas.calibraciones)
         .some(item => calTexto_(item.id_instrumento) === idInstrumento &&
@@ -30,7 +30,7 @@ function registrarCalibracion(datos) {
         throw new Error('La pinza ya tiene una calibración confirmada este mes.');
       }
     }
-    const resultado = datos.calibrada ? 'CALIBRADA' : 'NO_CALIBRADA';
+    const resultado = 'CALIBRADA';
     const id = 'CAL-' + Utilities.getUuid();
     const correo = Session.getActiveUser().getEmail() || 'NO_IDENTIFICADO';
     const hoja = calHoja_(CAL_CONFIG.hojas.calibraciones);
