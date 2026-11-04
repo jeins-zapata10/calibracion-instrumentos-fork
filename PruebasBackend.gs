@@ -64,3 +64,58 @@ function pruebaEstadoMensual() {
   Logger.log('=== PRUEBA FINALIZADA ===');
   return { ok: true, totalLineas: lineas.length, resultados: resultados };
 }
+
+
+/**
+ * Prueba de integración controlada: registra una calibración ficticia
+ * solo para TEST-L1-001 y únicamente si no existen registros del mes.
+ * REQUIERE CAL_PERMITIR_DATOS_PRUEBA=SI y una hoja de cálculo de pruebas.
+ * Escribe en CALIBRACIONES y actualiza el estado del instrumento ficticio.
+ */
+function pruebaRegistrarCalibracionMensual() {
+  calValidarEntornoPruebas_();
+
+  const idInstrumento = 'TEST-L1-001';
+  const idLinea = 'LIN-001';
+  const periodo = Utilities.formatDate(new Date(), CAL_CONFIG.zonaHoraria, 'yyyy-MM');
+  const panelAntes = consultarPanelCalibracion(idLinea);
+  const pinzaAntes = panelAntes.instrumentos.find(item => item.id === idInstrumento);
+
+  if (!pinzaAntes || !pinzaAntes.nombre.startsWith('[PRUEBA]')) {
+    throw new Error('No se encontró la pinza ficticia TEST-L1-001 activa en Línea 1.');
+  }
+  if (pinzaAntes.ultimaRevisionMes) {
+    Logger.log('Prueba omitida: la pinza ya tiene una revisión en ' + periodo);
+    return { ok: true, omitida: true, periodo, estado: pinzaAntes.estado };
+  }
+
+  const guardado = registrarCalibracion({ idInstrumento, calibrada: true });
+  const panelDespues = consultarPanelCalibracion(idLinea);
+  const pinzaDespues = panelDespues.instrumentos.find(item => item.id === idInstrumento);
+  const historial = consultarHistorial({ idLinea, idInstrumento });
+  const registro = historial.find(item => item.id === guardado.idCalibracion);
+
+  const validaciones = {
+    guardado: guardado.ok === true,
+    estadoCalibrada: !!pinzaDespues && pinzaDespues.estado === 'CALIBRADA',
+    periodoCorrecto: !!pinzaDespues &&
+      !!pinzaDespues.ultimaRevisionMes &&
+      pinzaDespues.ultimaRevisionMes.startsWith(periodo),
+    registradoEnHistorial: !!registro && registro.resultado === 'CALIBRADA'
+  };
+  const resultado = {
+    ok: Object.values(validaciones).every(Boolean),
+    periodo,
+    idInstrumento,
+    idCalibracion: guardado.idCalibracion,
+    validaciones,
+    totalHistorial: historial.length
+  };
+
+  Logger.log('=== PRUEBA DE REGISTRO MENSUAL ===');
+  Logger.log(JSON.stringify(resultado, null, 2));
+  if (!resultado.ok) {
+    throw new Error('La calibración se registró, pero falló una validación. Revisar el log.');
+  }
+  return resultado;
+}
