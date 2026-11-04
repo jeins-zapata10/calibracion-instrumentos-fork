@@ -31,15 +31,28 @@ function registrarCalibracion(datos) {
     const resultado = 'CALIBRADA';
     const id = 'CAL-' + Utilities.getUuid();
     const correo = Session.getActiveUser().getEmail() || 'NO_IDENTIFICADO';
+    // Primero se escribe el historial: es la fuente de verdad del estado mensual.
     const hoja = calHoja_(CAL_CONFIG.hojas.calibraciones);
     hoja.appendRow([id, fecha, idInstrumento, idLinea, resultado, correo]);
-    // El registro histórico es la fuente de verdad; el estado actual es una proyección.
-    const hojaInstrumentos = calHoja_(CAL_CONFIG.hojas.instrumentos);
-    hojaInstrumentos.getRange(instrumento._fila, 4).setValue(resultado);
     SpreadsheetApp.flush();
+
+    // El estado_actual del inventario es una copia auxiliar, no determina
+    // si una pinza está calibrada este mes. Si falla, el historial se conserva
+    // y la interfaz puede seguir consultando el estado mensual correcto.
+    let estadoInventarioActualizado = true;
+    try {
+      const hojaInstrumentos = calHoja_(CAL_CONFIG.hojas.instrumentos);
+      hojaInstrumentos.getRange(instrumento._fila, 4).setValue(resultado);
+      SpreadsheetApp.flush();
+    } catch (errorEstado) {
+      estadoInventarioActualizado = false;
+      console.error('Calibración ' + id + ' registrada, pero no se pudo actualizar estado_actual: ' + errorEstado);
+    }
+
     return {
       ok: true, idCalibracion: id, idInstrumento: idInstrumento,
       idLinea: idLinea, resultado: resultado,
+      estadoInventarioActualizado: estadoInventarioActualizado,
       fechaHora: Utilities.formatDate(fecha, CAL_CONFIG.zonaHoraria, 'yyyy-MM-dd HH:mm:ss')
     };
   } finally {
